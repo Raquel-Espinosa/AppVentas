@@ -11,6 +11,10 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     
+    <!-- NUEVAS LIBRERÍAS PARA CÓDIGO DE BARRAS Y PDF -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
     <style>
         html, body { height: 100%; margin: 0; }
         #root { min-height: 100vh; display: flex; flex-direction: column; }
@@ -53,9 +57,9 @@
                 Trash2: `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${className}"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
                 Plus: `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${className}"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
                 ArrowUp: `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${className}"><path d="m18 15-6-6-6 6"/></svg>`,
-                ArrowDown: `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${className}"><path d="m6 9 6 6 6-6"/></svg>`,
-                CalendarDays: `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${className}"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>`,
-                CheckCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${className}"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`
+                CheckCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${className}"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+                ScanLine: `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${className}"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" x2="17" y1="12" y2="12"/></svg>`,
+                FileText: `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${className}"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`
             };
             return <span dangerouslySetInnerHTML={{ __html: icons[name] || '' }} />;
         };
@@ -114,6 +118,38 @@
             const precio = Number(item.precioAsignado) || 0;
             const cant = Number(item.cantidad) || 0;
             return cant * kg * precio;
+        };
+
+        // Componente del Escáner de Código de Barras
+        const ScannerModal = ({ onScan, onClose }) => {
+            useEffect(() => {
+                const html5QrcodeScanner = new Html5QrcodeScanner(
+                    "qr-reader",
+                    { fps: 10, qrbox: { width: 250, height: 100 } },
+                    false
+                );
+                html5QrcodeScanner.render((decodedText) => {
+                    html5QrcodeScanner.clear();
+                    onScan(decodedText);
+                }, () => {});
+
+                return () => {
+                    try { html5QrcodeScanner.clear(); } catch(e){}
+                };
+            }, []);
+
+            return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm">
+                    <div className="bg-white p-5 rounded-2xl w-full max-w-sm shadow-xl">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold text-slate-800 flex items-center gap-2"><Icon name="ScanLine" /> Escanear Código</h3>
+                            <button onClick={onClose} className="text-slate-400 hover:text-red-500 bg-slate-100 p-2 rounded-full"><Icon name="Trash2" size={16}/></button>
+                        </div>
+                        <div id="qr-reader" className="w-full overflow-hidden rounded-lg border-2 border-amber-200"></div>
+                        <button onClick={onClose} className="mt-4 w-full bg-slate-100 text-slate-600 py-3 rounded-xl font-bold hover:bg-slate-200 transition">Cancelar Escaneo</button>
+                    </div>
+                </div>
+            );
         };
 
         const VendedorView = ({ user, setOrders, clientes, productos, showModal }) => {
@@ -576,9 +612,12 @@
             
             const [orderedGroups, setOrderedGroups] = useState([]);
             
-            // Estado local del repartidor para anotar los kilos antes de enviar
             const [kilosFisicos, setKilosFisicos] = useState({});
             const [metodosPago, setMetodosPago] = useState({});
+            
+            // Estados para el Escáner
+            const [codigosBarras, setCodigosBarras] = useState({});
+            const [scannerActivo, setScannerActivo] = useState(null); // Guarda el ID del item a escanear
 
             useEffect(() => {
                 const filtrados = orders.filter(o => o.repartidorId === (user.id || user.nombre) && o.fechaEntrega === filtroFecha);
@@ -616,6 +655,82 @@
                 setMetodosPago(prev => ({ ...prev, [groupId]: val }));
             };
 
+            const handleCodigoBarrasChange = (itemId, val) => {
+                setCodigosBarras(prev => ({ ...prev, [itemId]: val }));
+            };
+
+            // Función para generar Ticket PDF
+            const generarTicketPDF = (group, granTotal, totalCajas) => {
+                try {
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF({ format: [80, 200] }); // Formato tipo ticket de impresora térmica
+                    
+                    let y = 10;
+                    doc.setFontSize(12);
+                    doc.setFont(undefined, 'bold');
+                    doc.text("CONTROL HUEVOS PRO", 40, y, { align: "center" });
+                    y += 6;
+                    
+                    doc.setFontSize(10);
+                    doc.setFont(undefined, 'normal');
+                    doc.text("TICKET DE VENTA", 40, y, { align: "center" });
+                    y += 8;
+
+                    doc.setFontSize(8);
+                    doc.text(`Fecha: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 5, y);
+                    y += 5;
+                    doc.text(`Repartidor: ${user.nombre}`, 5, y);
+                    y += 5;
+                    
+                    const splitCliente = doc.splitTextToSize(`Cliente: ${group.cliente.negocio}`, 70);
+                    doc.text(splitCliente, 5, y);
+                    y += (splitCliente.length * 4) + 2;
+
+                    doc.line(5, y, 75, y);
+                    y += 5;
+
+                    group.items.forEach((item) => {
+                        const kg = Number(kilosFisicos[item.id]) || 0;
+                        const precio = Number(item.precioAsignado) || 0;
+                        const cant = Number(item.cantidad) || 0;
+                        const subtotal = cant * kg * precio;
+                        const codigo = codigosBarras[item.id] || 'Sin código';
+
+                        doc.setFont(undefined, 'bold');
+                        const splitProd = doc.splitTextToSize(`${cant}x ${item.producto}`, 70);
+                        doc.text(splitProd, 5, y);
+                        y += (splitProd.length * 4);
+                        
+                        doc.setFont(undefined, 'normal');
+                        doc.text(`Peso: ${kg} kg | $${precio}/kg`, 5, y);
+                        y += 4;
+                        doc.text(`Cód: ${codigo}`, 5, y);
+                        doc.text(`$${subtotal.toFixed(2)}`, 75, y, { align: "right" });
+                        y += 6;
+                    });
+
+                    doc.line(5, y, 75, y);
+                    y += 6;
+                    
+                    doc.setFontSize(10);
+                    doc.setFont(undefined, 'bold');
+                    doc.text(`TOTAL: $${granTotal.toFixed(2)}`, 75, y, { align: "right" });
+                    y += 6;
+
+                    doc.setFontSize(8);
+                    doc.setFont(undefined, 'normal');
+                    doc.text(`Pago: ${metodosPago[group.id] || 'Efectivo'}`, 5, y);
+                    y += 8;
+
+                    doc.text("¡Gracias por su preferencia!", 40, y, { align: "center" });
+                    
+                    doc.save(`Ticket_${group.cliente.telefono}.pdf`);
+                } catch (e) {
+                    alert("Error al generar PDF. Verifique su conexión.");
+                    console.error(e);
+                }
+            };
+
             const cambiarEstadoGrupo = (group, nuevoEstado) => {
                 // Validación para obligar a meter los kilos si es Entregado
                 if (nuevoEstado === 'Entregado') {
@@ -635,7 +750,12 @@
                     onConfirm: async (notaExtra) => {
                         setLoadingId(group.id);
                         const pagoStr = (nuevoEstado === 'Entregado' && metodosPago[group.id]) ? ` | Pago: ${metodosPago[group.id]}` : '';
-                        const observacionesFinales = (group.observaciones || '') + (notaExtra ? ` | Nota Rep: ${notaExtra}` : '') + pagoStr;
+                        
+                        // Añadimos los códigos de barras a la nota final
+                        const codigosAgrupados = group.items.map(i => codigosBarras[i.id] ? `${i.producto}: ${codigosBarras[i.id]}` : null).filter(Boolean).join(', ');
+                        const codigosStr = codigosAgrupados ? ` | Códigos Escaneados: [${codigosAgrupados}]` : '';
+
+                        const observacionesFinales = (group.observaciones || '') + (notaExtra ? ` | Nota Rep: ${notaExtra}` : '') + pagoStr + codigosStr;
 
                         let allSuccess = true;
                         const promesas = group.items.map(async (item) => {
@@ -740,25 +860,42 @@
                                         <div className="absolute top-0 left-0 w-1 h-full bg-amber-400"></div>
                                         <p className="text-xs text-amber-700 font-bold uppercase tracking-wider mb-3">Pesaje de la Entrega ({totalCajas} Cajas)</p>
                                         
-                                        <div className="space-y-3 mb-4">
+                                        <div className="space-y-4 mb-4">
                                             {group.items.map(item => (
-                                                <div key={item.id} className="flex justify-between items-center text-amber-900 border-b border-amber-200/50 pb-2">
-                                                    <div className="flex-1">
-                                                        <div className="font-bold">{item.cantidad}x {item.producto}</div>
-                                                        <div className="text-xs text-amber-700">Precio fijo: ${item.precioAsignado}/Kg</div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="flex items-center bg-white p-1 rounded-lg border border-amber-300 shadow-inner">
-                                                            <input 
-                                                                type="number" 
-                                                                value={kilosFisicos[item.id] || ""}
-                                                                onChange={(e) => handleKilosChange(item.id, e.target.value)}
-                                                                placeholder="0.0" 
-                                                                disabled={group.estado === 'Entregado'}
-                                                                className="w-16 p-1 text-center font-bold outline-none bg-transparent" 
-                                                            />
-                                                            <span className="text-xs font-bold text-amber-600 mr-2">Kg</span>
+                                                <div key={item.id} className="text-amber-900 border-b border-amber-200/50 pb-3">
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <div className="flex-1">
+                                                            <div className="font-bold text-sm leading-tight">{item.cantidad}x {item.producto}</div>
+                                                            <div className="text-xs text-amber-700 mt-1">Precio fijo: ${item.precioAsignado}/Kg</div>
                                                         </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="flex items-center bg-white p-1 rounded-lg border border-amber-300 shadow-inner">
+                                                                <input 
+                                                                    type="number" 
+                                                                    value={kilosFisicos[item.id] || ""}
+                                                                    onChange={(e) => handleKilosChange(item.id, e.target.value)}
+                                                                    placeholder="0.0" 
+                                                                    disabled={group.estado === 'Entregado'}
+                                                                    className="w-16 p-1 text-center font-bold outline-none bg-transparent" 
+                                                                />
+                                                                <span className="text-xs font-bold text-amber-600 mr-2">Kg</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {/* Sección del Código de Barras */}
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <button onClick={() => setScannerActivo(item.id)} disabled={group.estado === 'Entregado'} className="bg-slate-800 text-white p-2 rounded-lg hover:bg-slate-700 transition disabled:opacity-50" title="Escanear Código">
+                                                            <Icon name="ScanLine" size={16} />
+                                                        </button>
+                                                        <input 
+                                                            type="text" 
+                                                            value={codigosBarras[item.id] || ""}
+                                                            onChange={(e) => handleCodigoBarrasChange(item.id, e.target.value)}
+                                                            placeholder="Código escaneado..." 
+                                                            disabled={group.estado === 'Entregado'}
+                                                            className="flex-1 p-2 text-xs font-mono bg-white border border-amber-300 rounded-lg outline-none" 
+                                                        />
                                                     </div>
                                                 </div>
                                             ))}
@@ -774,7 +911,7 @@
                                 </div>
 
                                 <div className="flex flex-wrap gap-2 mt-5">
-                                    <a href={`https://wa.me/52${group.cliente.telefono}?text=Hola,%20soy%20el%20repartidor.%20Voy%20en%20camino%20con%20su%20pedido.`} target="_blank" className="flex-1 min-w-[100px] bg-green-500 text-white flex justify-center items-center gap-1.5 py-3 rounded-xl font-bold text-sm hover:bg-green-600 shadow-sm transition">
+                                    <a href={`https://wa.me/52${group.cliente.telefono}?text=Hola,%20soy%20el%20repartidor.%20Voy%20en%20camino%20con%20su%20pedido.%20En%20un%20momento%20le%20adjunto%20su%20ticket%20de%20compra.`} target="_blank" className="flex-1 min-w-[100px] bg-green-500 text-white flex justify-center items-center gap-1.5 py-3 rounded-xl font-bold text-sm hover:bg-green-600 shadow-sm transition">
                                         <Icon name="MessageCircle" size={18}/> Whats
                                     </a>
                                     <a href={`tel:${group.cliente.telefono}`} className="flex-1 min-w-[100px] bg-blue-500 text-white flex justify-center items-center gap-1.5 py-3 rounded-xl font-bold text-sm hover:bg-blue-600 shadow-sm transition">
@@ -802,6 +939,11 @@
                                                 <option value="Otro">📝 Otro</option>
                                             </select>
                                         </div>
+                                        
+                                        <button onClick={() => generarTicketPDF(group, granTotal, totalCajas)} className="w-full mt-3 bg-red-50 text-red-600 py-3 rounded-xl font-bold hover:bg-red-100 transition text-sm flex justify-center items-center gap-2 border border-red-200 shadow-sm">
+                                            <Icon name="FileText" size={18} /> Descargar Ticket PDF
+                                        </button>
+
                                         <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 mt-4">
                                             <button onClick={() => cambiarEstadoGrupo(group, 'Entregado')} disabled={loadingId === group.id} className="bg-emerald-100 text-emerald-800 py-3 rounded-xl font-bold hover:bg-emerald-200 transition text-sm flex justify-center items-center gap-2 disabled:opacity-50 border border-emerald-200 shadow-sm">
                                                 {loadingId === group.id ? <Icon name="Loader" size={18} /> : <Icon name="CheckCircle" size={18} />} Entregado
@@ -822,6 +964,16 @@
                             <p className="font-medium text-lg">Día libre</p>
                             <p className="text-sm">No tienes entregas asignadas para esta fecha.</p>
                         </div>
+                    )}
+                    
+                    {scannerActivo && (
+                        <ScannerModal 
+                            onScan={(text) => {
+                                handleCodigoBarrasChange(scannerActivo, text);
+                                setScannerActivo(null);
+                            }} 
+                            onClose={() => setScannerActivo(null)} 
+                        />
                     )}
                 </div>
             );
