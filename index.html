@@ -29,6 +29,12 @@
 
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxgF1W6GhcPPm0TTUcIq7r2JP5qufXizBPkKPgqpgIGVI6qQmKjPQ_0j2yR_qVT4KglRw/exec";
 
+        const formatProductId = (val) => {
+            if (val === null || val === undefined || val === '') return '';
+            const str = String(val).trim();
+            return /^\d+$/.test(str) ? str.padStart(3, '0') : str;
+        };
+
         const sendPostRequest = async (data) => {
             try {
                 const response = await fetch(SCRIPT_URL, {
@@ -118,7 +124,7 @@
 
             useEffect(() => {
                 if (productos && productos.length > 0 && lineas.length === 0) {
-                    setLineas([{ id: Date.now(), productoId: productos[0].id || productos[0].nombre, cantidad: 1, precioAsignado: "" }]);
+                    setLineas([{ id: Date.now(), productoId: formatProductId(productos[0].id) || productos[0].nombre, cantidad: 1, precioAsignado: "" }]);
                 }
             }, [productos, lineas.length]);
 
@@ -131,7 +137,7 @@
             };
 
             const agregarLinea = () => {
-                const defaultProd = productos.length > 0 ? (productos[0].id || productos[0].nombre) : "";
+                const defaultProd = productos.length > 0 ? (formatProductId(productos[0].id) || productos[0].nombre) : "";
                 setLineas([...lineas, { id: Date.now(), productoId: defaultProd, cantidad: 1, precioAsignado: "" }]);
             };
 
@@ -149,9 +155,9 @@
                 for (let i = 0; i < lineas.length; i++) {
                     const linea = lineas[i];
                     
-                    // Extraemos el ID del producto (Ej. "001")
-                    const prodSeleccionado = productos.find(p => String(p.id || p.nombre) === String(linea.productoId));
-                    const idProducto = prodSeleccionado ? (prodSeleccionado.id || prodSeleccionado.nombre) : linea.productoId;
+                    // Extraemos el ID del producto asegurando los ceros a la izquierda (Ej. "001")
+                    const prodSeleccionado = productos.find(p => formatProductId(p.id || p.nombre) === formatProductId(linea.productoId));
+                    const idProducto = formatProductId(prodSeleccionado ? (prodSeleccionado.id || prodSeleccionado.nombre) : linea.productoId);
 
                     const nuevoPedido = {
                         id: lineas.length > 1 ? `PED-${baseId}-${i+1}` : `PED-${baseId}`,
@@ -180,7 +186,7 @@
                     setOrders(prev => [...prev, ...nuevosPedidos]);
                     showModal({ type: 'alert', title: '¡Éxito!', message: "Pedido guardado con éxito." });
                     setTelefono(""); setCliente(null); setFecha(""); setObservaciones("");
-                    const defaultProd = productos.length > 0 ? (productos[0].id || productos[0].nombre) : "";
+                    const defaultProd = productos.length > 0 ? (formatProductId(productos[0].id) || productos[0].nombre) : "";
                     setLineas([{ id: Date.now(), productoId: defaultProd, cantidad: 1, precioAsignado: "" }]);
                 } else {
                     showModal({ type: 'alert', title: 'Error', message: "Error al guardar. Verifica tu conexión." });
@@ -225,7 +231,7 @@
                                     <div key={linea.id} className="flex gap-2 items-center bg-slate-50 p-2 rounded-xl border border-slate-100 flex-wrap sm:flex-nowrap">
                                         <div className="flex-1 min-w-[150px]">
                                             <select value={linea.productoId} onChange={e => actualizarLinea(linea.id, 'productoId', e.target.value)} className="w-full p-2 border-none bg-transparent outline-none text-sm font-medium text-slate-700">
-                                                {productos.map(p => <option key={p.id || p.nombre} value={p.id || p.nombre}>{p.nombre || p.producto}</option>)}
+                                                {productos.map(p => <option key={formatProductId(p.id) || p.nombre} value={formatProductId(p.id) || p.nombre}>{p.nombre || p.producto}</option>)}
                                             </select>
                                         </div>
                                         <div className="w-20">
@@ -415,9 +421,9 @@
                                                     <div className="space-y-2">
                                                         {group.items.map(item => {
                                                             // Buscamos la descripción del producto para mostrar "ID - Nombre"
-                                                            const prodObj = productos ? productos.find(p => String(p.id) === String(item.producto) || String(p.nombre) === String(item.producto)) : null;
+                                                            const prodObj = productos ? productos.find(p => formatProductId(p.id) === formatProductId(item.producto) || String(p.nombre) === String(item.producto)) : null;
                                                             const nombreProd = prodObj ? (prodObj.nombre || prodObj.producto) : item.producto;
-                                                            const displayProducto = String(item.producto) !== String(nombreProd) ? `${item.producto} - ${nombreProd}` : item.producto;
+                                                            const displayProducto = String(formatProductId(item.producto)) !== String(nombreProd) ? `${formatProductId(item.producto)} - ${nombreProd}` : formatProductId(item.producto);
                                                             
                                                             return (
                                                                 <div key={item.id} className="bg-white border border-slate-200 p-2 rounded flex flex-col text-xs">
@@ -656,9 +662,9 @@
                     doc.line(5, y, 75, y); y += 5;
 
                     group.items.forEach((item) => {
-                        const prodObj = productos ? productos.find(p => String(p.id) === String(item.producto) || String(p.nombre) === String(item.producto)) : null;
+                        const prodObj = productos ? productos.find(p => formatProductId(p.id) === formatProductId(item.producto) || String(p.nombre) === String(item.producto)) : null;
                         const nombreProd = prodObj ? (prodObj.nombre || prodObj.producto) : item.producto;
-                        const displayProducto = String(item.producto) !== String(nombreProd) ? `${item.producto} - ${nombreProd}` : item.producto;
+                        const displayProducto = String(formatProductId(item.producto)) !== String(nombreProd) ? `${formatProductId(item.producto)} - ${nombreProd}` : formatProductId(item.producto);
 
                         const kg = Number(kilosFisicos[item.id]) || 0;
                         const sub = Number(item.cantidad) * kg * Number(item.precioAsignado);
@@ -793,9 +799,9 @@
                                 <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 mt-4">
                                     <p className="text-xs text-amber-700 font-bold uppercase mb-2">Pesaje y Escaneo</p>
                                     {group.items.map(item => {
-                                        const prodObj = productos ? productos.find(p => String(p.id) === String(item.producto) || String(p.nombre) === String(item.producto)) : null;
+                                        const prodObj = productos ? productos.find(p => formatProductId(p.id) === formatProductId(item.producto) || String(p.nombre) === String(item.producto)) : null;
                                         const nombreProd = prodObj ? (prodObj.nombre || prodObj.producto) : item.producto;
-                                        const displayProducto = String(item.producto) !== String(nombreProd) ? `${item.producto} - ${nombreProd}` : item.producto;
+                                        const displayProducto = String(formatProductId(item.producto)) !== String(nombreProd) ? `${formatProductId(item.producto)} - ${nombreProd}` : formatProductId(item.producto);
 
                                         return (
                                             <div key={item.id} className="mb-3 border-b border-amber-200/50 pb-2">
@@ -832,11 +838,9 @@
                                         <div className="mt-4">
                                             <select value={metodosPago[group.id] || group.items[0].metodoPago || ""} onChange={(e) => setMetodosPago({...metodosPago, [group.id]: e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-slate-50 outline-none font-medium text-slate-700">
                                                 <option value="">Selecciona Método de Pago...</option>
-                                                <option value="Efectivo">💵 Efectivo</option>
-                                                <option value="Transferencia">📱 Transferencia</option>
-                                                <option value="Credito">💳 Crédito</option>
-                                                <option value="Parcialidades">⏱️ Parcialidades</option>
-                                                <option value="Otro">📝 Otro</option>
+                                                <option value="Contado/Efectivo">💵 Contado/Efectivo</option>
+                                                <option value="Contado/Transferencia">📱 Contado/Transferencia</option>
+                                                <option value="Credito">💳 Credito</option>
                                             </select>
                                         </div>
                                         <button onClick={() => generarTicketPDF(group, granTotal)} className="w-full mt-2 bg-red-50 text-red-600 py-2.5 rounded-lg font-bold border border-red-200 text-sm flex justify-center items-center gap-2 hover:bg-red-100 transition"><Icon name="FileText" size={18} /> Descargar Ticket PDF</button>
@@ -910,13 +914,13 @@
                         if(resClientes.status === 'error') throw new Error(`Hoja Clientes: ${resClientes.data}`);
 
                         setUsers(resUsuarios.data);
-                        setProductos(resProductos.data);
+                        setProductos(resProductos.data.map(p => ({ ...p, id: p.id !== undefined && p.id !== "" ? formatProductId(p.id) : p.id })));
                         setClientes(resClientes.data);
                         
                         setOrders(resVentas.data.map(v => ({
                             id: v.id_pedido || v.id, vendedorId: v.vendedor_id || v.vendedor,
                             cliente: { telefono: v.telefono || v.teléfono, negocio: v.negocio, ubicacion: v.ubicacion || v.ubicación },
-                            producto: v.producto, cantidad: v.cantidad, fechaEntrega: v.fecha_entrega ? v.fecha_entrega.toString().split('T')[0] : "",
+                            producto: formatProductId(v.producto), cantidad: v.cantidad, fechaEntrega: v.fecha_entrega ? v.fecha_entrega.toString().split('T')[0] : "",
                             observaciones: v.observaciones, estado: v.estado || 'Pendiente', repartidorId: v.repartidor_id || v.repartidor,
                             precioAsignado: Number(v.precio) || 0, kilosPorCaja: Number(v.kilos) || 0,
                             metodoPago: v.forma_de_pago || v.pago || v.metodo_pago || '', 
