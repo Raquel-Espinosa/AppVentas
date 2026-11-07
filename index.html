@@ -114,8 +114,27 @@
             );
         };
 
-        const VendedorView = ({ user, setOrders, clientes, productos, showModal }) => {
+        // Función auxiliar para concatenar Direccion, DireccionNumero, DireccionNumeroInt y CodigoPostal de SQL
+        const concatenarUbicacionSQL = (c) => {
+            if (!c) return "";
+            const dir = String(c.direccion || c.Direccion || "").trim();
+            const num = String(c.direccionNumero || c.DireccionNumero || "").trim();
+            const numInt = String(c.direccionNumeroInt || c.DireccionNumeroInt || "").trim();
+            const cp = String(c.codigoPostal || c.CodigoPostal || "").trim();
+            const partes = [
+                dir,
+                num ? `#${num}` : "",
+                numInt ? `Int. ${numInt}` : "",
+                cp ? `CP ${cp}` : ""
+            ].filter(Boolean);
+            return partes.length > 0 ? partes.join(", ") : String(c.ubicacion || "").trim();
+        };
+
+        const VendedorView = ({ user, setOrders, clientes, clientesSQL, loadingSQL, recargarClientesSQL, productos, showModal }) => {
+            const [modoBusqueda, setModoBusqueda] = useState("telefono"); // "telefono" | "nombreSQL"
             const [telefono, setTelefono] = useState("");
+            const [busquedaNombre, setBusquedaNombre] = useState("");
+            const [mostrarListaSQL, setMostrarListaSQL] = useState(false);
             const [cliente, setCliente] = useState(null);
             const [fecha, setFecha] = useState("");
             const [observaciones, setObservaciones] = useState("");
@@ -128,12 +147,60 @@
                 }
             }, [productos, lineas.length]);
 
+            const cambiarModoBusqueda = (nuevoModo) => {
+                setModoBusqueda(nuevoModo);
+                setCliente(null);
+                setMostrarListaSQL(false);
+            };
+
+            // OPCIÓN 1: Búsqueda original por número de teléfono (Hoja de Google) - SIN CAMBIOS
             const buscarCliente = () => {
                 const encontrado = clientes.find(c => {
                     const telDb = String(c.telefono || c.teléfono || "").trim();
                     return telDb === telefono.trim();
                 });
                 setCliente(encontrado || { noEncontrado: true });
+            };
+
+            // OPCIÓN 2: Filtrado en tiempo real por Nombre en SQL ([dbo].[AM_CTE_ALTA]) para celular
+            const clientesSQLFiltrados = useMemo(() => {
+                const lista = clientesSQL || [];
+                const termino = busquedaNombre.trim().toLowerCase();
+                if (!termino) return lista.slice(0, 60);
+                return lista.filter(c => {
+                    const nom = String(c.nombre || c.Nombre || "").toLowerCase();
+                    const clave = String(c.id || c.Cliente || "").toLowerCase();
+                    const giro = String(c.tipoNegocio || c.TipoNegocio || "").toLowerCase();
+                    return nom.includes(termino) || clave.includes(termino) || giro.includes(termino);
+                }).slice(0, 60);
+            }, [clientesSQL, busquedaNombre]);
+
+            const seleccionarClienteSQL = (c) => {
+                const ubicacionConcat = concatenarUbicacionSQL(c);
+                const claveCliente = String(c.id || c.Cliente || "").trim();
+                const celEncargado = String(c.celEncargado || c.CelEncargado || "").trim();
+                const telefonoFinal = celEncargado || claveCliente;
+                const tipoNegocio = String(c.tipoNegocio || c.TipoNegocio || "").trim();
+                const nombreCliente = String(c.nombre || c.Nombre || "").trim();
+
+                setBusquedaNombre(nombreCliente);
+                setMostrarListaSQL(false);
+                setCliente({
+                    origenSQL: true,
+                    id: claveCliente,
+                    nombre: nombreCliente,
+                    // Para guardar en Google Sheets:
+                    // CelEncargado (o Cliente CT-... si CelEncargado está vacío) -> columna Telefono
+                    // TipoNegocio -> columna Negocio (si TipoNegocio viene vacío en SQL, usa Nombre para no dejarlo en blanco)
+                    // Direccion + DireccionNumero + DireccionNumeroInt + CodigoPostal -> columna ubicacion
+                    telefono: telefonoFinal,
+                    celEncargado: celEncargado,
+                    tipoNegocio: tipoNegocio,
+                    negocio: tipoNegocio || nombreCliente,
+                    ubicacion: ubicacionConcat,
+                    encargado: c.encargado || c.NombreEncargado || "",
+                    referencias: ubicacionConcat || c.referencias || c.Referencias || "Sin referencias detalladas."
+                });
             };
 
             const agregarLinea = () => {
@@ -163,8 +230,8 @@
                         id: lineas.length > 1 ? `PED-${baseId}-${i+1}` : `PED-${baseId}`,
                         vendedorId: user.id || user.nombre,
                         cliente: {
-                            telefono: cliente.telefono || cliente.teléfono,
-                            negocio: cliente.negocio,
+                            telefono: cliente.origenSQL ? (cliente.celEncargado || cliente.id || cliente.telefono || "") : (cliente.telefono || cliente.teléfono),
+                            negocio: cliente.origenSQL ? (cliente.tipoNegocio || cliente.nombre) : cliente.negocio,
                             ubicacion: cliente.ubicacion || cliente.ubicación
                         },
                         producto: idProducto,
@@ -185,7 +252,7 @@
                 if (successCount === lineas.length) {
                     setOrders(prev => [...prev, ...nuevosPedidos]);
                     showModal({ type: 'alert', title: '¡Éxito!', message: "Pedido guardado con éxito." });
-                    setTelefono(""); setCliente(null); setFecha(""); setObservaciones("");
+                    setTelefono(""); setBusquedaNombre(""); setCliente(null); setFecha(""); setObservaciones("");
                     const defaultProd = productos.length > 0 ? (formatProductId(productos[0].id) || productos[0].nombre) : "";
                     setLineas([{ id: Date.now(), productoId: defaultProd, cantidad: 1, precioAsignado: "" }]);
                 } else {
@@ -199,16 +266,143 @@
                     <h2 className="text-2xl font-bold text-amber-600">Nuevo Pedido</h2>
                     
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Teléfono del Cliente</label>
-                        <div className="flex flex-col sm:flex-row gap-2">
-                            <input type="text" value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Ej. 5551234567" className="flex-1 p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
-                            <button onClick={buscarCliente} className="bg-amber-500 text-white px-6 py-3 rounded-xl font-medium hover:bg-amber-600 transition flex items-center justify-center gap-2">Buscar</button>
+                        {/* Selector de Base de Datos de Clientes */}
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Método de Búsqueda de Cliente</label>
+                        <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl mb-5">
+                            <button
+                                type="button"
+                                onClick={() => cambiarModoBusqueda("telefono")}
+                                className={`py-2.5 px-3 rounded-lg text-sm font-bold transition flex items-center justify-center gap-1.5 ${modoBusqueda === "telefono" ? "bg-white text-amber-600 shadow-sm" : "text-slate-600 hover:text-slate-800"}`}
+                            >
+                                <Icon name="Phone" size={16} /> Por Teléfono
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => cambiarModoBusqueda("nombreSQL")}
+                                className={`py-2.5 px-3 rounded-lg text-sm font-bold transition flex items-center justify-center gap-1.5 ${modoBusqueda === "nombreSQL" ? "bg-white text-amber-600 shadow-sm" : "text-slate-600 hover:text-slate-800"}`}
+                            >
+                                <Icon name="User" size={16} /> Por Nombre (SQL)
+                            </button>
                         </div>
+
+                        {/* OPCIÓN 1: Búsqueda por Teléfono (Hoja de Google - Sin cambios) */}
+                        {modoBusqueda === "telefono" && (
+                            <>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">Teléfono del Cliente</label>
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                    <input type="text" value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Ej. 5551234567" className="flex-1 p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                                    <button type="button" onClick={buscarCliente} className="bg-amber-500 text-white px-6 py-3 rounded-xl font-medium hover:bg-amber-600 transition flex items-center justify-center gap-2">Buscar</button>
+                                </div>
+                            </>
+                        )}
+
+                        {/* OPCIÓN 2: Búsqueda por Nombre en SQL ([dbo].[AM_CTE_ALTA]) optimizada para celular */}
+                        {modoBusqueda === "nombreSQL" && (
+                            <div className="relative">
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="block text-sm font-medium text-slate-700">Nombre del Cliente (Base SQL)</label>
+                                    <button
+                                        type="button"
+                                        onClick={recargarClientesSQL}
+                                        disabled={loadingSQL}
+                                        className="text-xs font-semibold text-amber-600 hover:text-amber-700 flex items-center gap-1"
+                                    >
+                                        {loadingSQL ? "Cargando..." : `Catálogo SQL (${(clientesSQL || []).length}) ↻`}
+                                    </button>
+                                </div>
+
+                                <div className="relative flex items-center">
+                                    <input
+                                        type="text"
+                                        value={busquedaNombre}
+                                        onFocus={() => setMostrarListaSQL(true)}
+                                        onChange={e => {
+                                            setBusquedaNombre(e.target.value);
+                                            setMostrarListaSQL(true);
+                                            if (cliente) setCliente(null);
+                                        }}
+                                        placeholder="Escribe el nombre o toca para ver la lista..."
+                                        className="w-full p-3 pr-20 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-base"
+                                    />
+                                    <div className="absolute right-2 flex items-center gap-1">
+                                        {busquedaNombre && (
+                                            <button
+                                                type="button"
+                                                onClick={() => { setBusquedaNombre(""); setCliente(null); setMostrarListaSQL(true); }}
+                                                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full bg-slate-100 text-xs font-bold"
+                                                title="Limpiar"
+                                            >
+                                                ✕
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => setMostrarListaSQL(!mostrarListaSQL)}
+                                            className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg"
+                                            title="Desplegar lista"
+                                        >
+                                            <Icon name={mostrarListaSQL ? "ArrowUp" : "ArrowDown"} size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Ventana desplegable táctil para celular */}
+                                {mostrarListaSQL && (
+                                    <div className="mt-2 bg-white border-2 border-amber-300 rounded-2xl shadow-xl max-h-64 overflow-y-auto divide-y divide-slate-100 z-30 relative custom-scrollbar">
+                                        {loadingSQL ? (
+                                            <div className="p-4 text-center text-sm text-slate-500 flex items-center justify-center gap-2">
+                                                <Icon name="Loader" size={18} /> Consultando tabla AM_CTE_ALTA...
+                                            </div>
+                                        ) : clientesSQLFiltrados.length > 0 ? (
+                                            clientesSQLFiltrados.map((c, idx) => {
+                                                const ub = concatenarUbicacionSQL(c);
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        key={(c.id || c.Cliente || idx) + "_" + idx}
+                                                        onClick={() => seleccionarClienteSQL(c)}
+                                                        className="w-full text-left p-3.5 hover:bg-amber-50 active:bg-amber-100 transition flex flex-col gap-0.5"
+                                                    >
+                                                        <div className="flex justify-between items-start gap-2">
+                                                            <span className="font-bold text-slate-800 text-sm leading-snug">{c.nombre || c.Nombre}</span>
+                                                            {(c.id || c.Cliente) && (
+                                                                <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded shrink-0">
+                                                                    {c.id || c.Cliente}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {(c.tipoNegocio || c.TipoNegocio) && (
+                                                            <span className="text-xs font-semibold text-amber-700">Giro: {c.tipoNegocio || c.TipoNegocio}</span>
+                                                        )}
+                                                        {ub && (
+                                                            <span className="text-xs text-slate-500 truncate">{ub}</span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })
+                                        ) : (
+                                            <div className="p-4 text-center text-sm text-slate-500">
+                                                No se encontraron clientes con "{busquedaNombre}".
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {cliente && !cliente.noEncontrado && (
                             <div className="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-100 text-sm shadow-inner">
-                                <p><strong>Nombre del negocio:</strong> {cliente.negocio}</p>
-                                <p><strong>Encargado:</strong> {cliente.encargado}</p>
+                                {cliente.origenSQL && (
+                                    <p className="mb-1"><span className="inline-block bg-amber-100 text-amber-800 text-[11px] font-bold px-2 py-0.5 rounded-full">Cliente SQL ({cliente.id || 'AM_CTE_ALTA'})</span></p>
+                                )}
+                                {cliente.origenSQL && cliente.nombre && (
+                                    <p><strong>Cliente (Nombre):</strong> {cliente.nombre}</p>
+                                )}
+                                <p><strong>Nombre del negocio / Giro:</strong> {cliente.negocio || "Sin especificar"}</p>
+                                <p><strong>Encargado:</strong> {cliente.encargado || "Sin especificar"}</p>
+                                {cliente.origenSQL && (
+                                    <p><strong>Teléfono (CelEncargado):</strong> {cliente.celEncargado || "Sin teléfono registrado"}</p>
+                                )}
                                 <div className="mt-2 p-2 bg-slate-100 rounded text-slate-700 border border-slate-200">
                                     <strong>Dirección / Referencias:</strong> 
                                     <span className="italic block mt-1">{cliente['dirección_/_referencias'] || cliente['direccion_/_referencias'] || cliente.referencias || cliente.direccion || "Sin referencias detalladas."}</span>
@@ -293,7 +487,8 @@
 
                 const groupsMap = {};
                 list.forEach(o => {
-                    const key = `${o.cliente.telefono}-${o.fechaEntrega}`;
+                    const identificadorCliente = o.cliente.telefono || o.cliente.negocio || o.cliente.ubicacion || o.id;
+                    const key = `${identificadorCliente}-${o.fechaEntrega}`;
                     if (!groupsMap[key]) {
                         groupsMap[key] = { id: key, cliente: o.cliente, fechaEntrega: o.fechaEntrega, estado: o.estado, repartidorId: o.repartidorId, observaciones: o.observaciones, items: [] };
                     }
@@ -415,6 +610,7 @@
                                             <tr key={group.id} className="hover:bg-slate-50/80 transition align-top">
                                                 <td className="p-4 min-w-[200px]">
                                                     <div className="font-bold text-slate-800 text-base">{group.cliente.negocio}</div>
+                                                    {group.cliente.ubicacion && <div className="text-xs text-slate-500 mt-0.5">{group.cliente.ubicacion}</div>}
                                                     <span className={`inline-block mt-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${group.estado === 'Entregado' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{group.estado}</span>
                                                 </td>
                                                 <td className="p-4">
@@ -520,7 +716,7 @@
                                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden">
                                     <div className="absolute top-0 left-0 w-1 h-full bg-slate-400"></div>
                                     <p className="text-slate-500 text-sm font-medium mb-1">Total Entregas</p>
-                                    <p className="text-4xl font-black text-slate-800">{new Set(pedidosDash.map(o => o.cliente.telefono + o.fechaEntrega)).size}</p>
+                                    <p className="text-4xl font-black text-slate-800">{new Set(pedidosDash.map(o => (o.cliente.telefono || o.cliente.negocio || o.cliente.ubicacion) + o.fechaEntrega)).size}</p>
                                 </div>
                                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden">
                                     <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
@@ -627,7 +823,7 @@
                 const currentCodigos = { ...codigosBarras };
 
                 filtrados.forEach(o => {
-                    const key = `${o.cliente.telefono}`;
+                    const key = `${o.cliente.telefono || o.cliente.negocio || o.cliente.ubicacion || o.id}`;
                     if (!groupsMap[key]) groupsMap[key] = { id: key, cliente: o.cliente, estado: o.estado, observaciones: o.observaciones, items: [] };
                     groupsMap[key].items.push(o);
                     
@@ -772,6 +968,10 @@
 
                     {gruposAMostrar.map((group, index) => {
                         const granTotal = group.items.reduce((sum, item) => sum + (Number(item.cantidad) * (Number(kilosFisicos[item.id])||0) * Number(item.precioAsignado)), 0);
+                        const clienteHoja = group.cliente.telefono
+                            ? clientes.find(c => String(c.telefono || c.teléfono || "").trim() === String(group.cliente.telefono).trim())
+                            : null;
+                        const refDireccion = clienteHoja?.['dirección_/_referencias'] || clienteHoja?.['direccion_/_referencias'] || group.cliente.ubicacion || 'Sin referencias detalladas.';
 
                         return (
                             <div key={group.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
@@ -793,7 +993,7 @@
                                 </div>
                                 
                                 <p className="text-sm text-slate-600 mt-2 bg-slate-50 p-2 rounded border border-slate-100">
-                                    <strong>Dirección/Ref:</strong> {clientes.find(c => String(c.telefono).trim() === String(group.cliente.telefono).trim())?.['dirección_/_referencias'] || clientes.find(c => String(c.telefono).trim() === String(group.cliente.telefono).trim())?.['direccion_/_referencias'] || 'Sin referencias detalladas.'}
+                                    <strong>Dirección/Ref:</strong> {refDireccion}
                                 </p>
                                 
                                 <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 mt-4">
@@ -840,7 +1040,7 @@
                                                 <option value="">Selecciona Método de Pago...</option>
                                                 <option value="Contado/Efectivo">💵 Contado/Efectivo</option>
                                                 <option value="Contado/Transferencia">📱 Contado/Transferencia</option>
-                                                <option value="Credito">💳 Credito</option>
+                                                <option value="Credito">💳 Crédito</option>
                                             </select>
                                         </div>
                                         <button onClick={() => generarTicketPDF(group, granTotal)} className="w-full mt-2 bg-red-50 text-red-600 py-2.5 rounded-lg font-bold border border-red-200 text-sm flex justify-center items-center gap-2 hover:bg-red-100 transition"><Icon name="FileText" size={18} /> Descargar Ticket PDF</button>
@@ -877,6 +1077,8 @@
             const [users, setUsers] = useState([]);
             const [orders, setOrders] = useState([]);
             const [clientes, setClientes] = useState([]);
+            const [clientesSQL, setClientesSQL] = useState([]);
+            const [loadingSQL, setLoadingSQL] = useState(false);
             const [productos, setProductos] = useState([]);
             const [isLoadingApp, setIsLoadingApp] = useState(true);
             const [error, setError] = useState(null);
@@ -884,6 +1086,21 @@
 
             const [loginForm, setLoginForm] = useState({ usuario: '', password: '' });
             const [loginError, setLoginError] = useState("");
+
+            const cargarClientesSQL = async () => {
+                setLoadingSQL(true);
+                try {
+                    const req = await fetch(`${SCRIPT_URL}?action=getClientesSQL`);
+                    const res = await req.json();
+                    if (res.status === 'success' && Array.isArray(res.data)) {
+                        setClientesSQL(res.data);
+                    }
+                } catch (e) {
+                    console.warn("No se pudo cargar AM_CTE_ALTA desde SQL:", e);
+                } finally {
+                    setLoadingSQL(false);
+                }
+            };
 
             useEffect(() => {
                 const fetchAllData = async () => {
@@ -926,6 +1143,9 @@
                             metodoPago: v.forma_de_pago || v.pago || v.metodo_pago || '', 
                             codigoEscaneado: v.codigo_barras || v.codigo || v.codigo_escaneado || ''
                         })));
+
+                        // Cargamos el catálogo de clientes de SQL ([dbo].[AM_CTE_ALTA]) en segundo plano
+                        cargarClientesSQL();
                         
                     } catch (err) { 
                         setError(err.message || "Error general de conexión."); 
@@ -1000,7 +1220,7 @@
                         </div>
                     </header>
                     <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-6 mt-2">
-                        {(currentUser.rol||'').toLowerCase() === 'vendedor' && <VendedorView user={currentUser} setOrders={setOrders} clientes={clientes} productos={productos} showModal={setModalConfig} />}
+                        {(currentUser.rol||'').toLowerCase() === 'vendedor' && <VendedorView user={currentUser} setOrders={setOrders} clientes={clientes} clientesSQL={clientesSQL} loadingSQL={loadingSQL} recargarClientesSQL={cargarClientesSQL} productos={productos} showModal={setModalConfig} />}
                         {(currentUser.rol||'').toLowerCase() === 'admin' && <AdminView orders={orders} setOrders={setOrders} users={users} setUsers={setUsers} productos={productos} showModal={setModalConfig} />}
                         {(currentUser.rol||'').toLowerCase() === 'repartidor' && <RepartidorView user={currentUser} orders={orders} setOrders={setOrders} clientes={clientes} productos={productos} showModal={setModalConfig} />}
                     </main>
