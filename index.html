@@ -130,6 +130,24 @@
             return partes.length > 0 ? partes.join(", ") : String(c.ubicacion || "").trim();
         };
 
+        const CACHE_CLIENTES_SQL_KEY = "control_huevos_clientes_sql_v1";
+
+        // Pre-indexa texto en minúsculas y ubicación una sola vez para que la búsqueda en el celular sea instantánea
+        const prepararListaClientesSQL = (lista) => {
+            if (!Array.isArray(lista)) return [];
+            return lista.map(c => {
+                const nom = String(c.nombre || c.Nombre || "").trim();
+                const clave = String(c.id || c.Cliente || "").trim();
+                const giro = String(c.tipoNegocio || c.TipoNegocio || "").trim();
+                const ub = c._ubicacion || concatenarUbicacionSQL(c);
+                return {
+                    ...c,
+                    _ubicacion: ub,
+                    _search: `${nom} ${clave} ${giro}`.toLowerCase()
+                };
+            });
+        };
+
         const VendedorView = ({ user, setOrders, clientes, clientesSQL, loadingSQL, recargarClientesSQL, productos, showModal }) => {
             const [modoBusqueda, setModoBusqueda] = useState("telefono"); // "telefono" | "nombreSQL"
             const [telefono, setTelefono] = useState("");
@@ -162,17 +180,23 @@
                 setCliente(encontrado || { noEncontrado: true });
             };
 
-            // OPCIÓN 2: Filtrado en tiempo real por Nombre en SQL ([dbo].[AM_CTE_ALTA]) para celular
+            // OPCIÓN 2: Filtrado instantáneo por Nombre en SQL ([dbo].[AM_CTE_ALTA]) pre-indexado para celular
             const clientesSQLFiltrados = useMemo(() => {
                 const lista = clientesSQL || [];
                 const termino = busquedaNombre.trim().toLowerCase();
-                if (!termino) return lista.slice(0, 60);
-                return lista.filter(c => {
-                    const nom = String(c.nombre || c.Nombre || "").toLowerCase();
-                    const clave = String(c.id || c.Cliente || "").toLowerCase();
-                    const giro = String(c.tipoNegocio || c.TipoNegocio || "").toLowerCase();
-                    return nom.includes(termino) || clave.includes(termino) || giro.includes(termino);
-                }).slice(0, 60);
+                if (!termino) return lista.slice(0, 25);
+                const matches = [];
+                for (let i = 0; i < lista.length; i++) {
+                    const c = lista[i];
+                    const texto = c._search !== undefined
+                        ? c._search
+                        : `${c.nombre || c.Nombre || ""} ${c.id || c.Cliente || ""} ${c.tipoNegocio || c.TipoNegocio || ""}`.toLowerCase();
+                    if (texto.includes(termino)) {
+                        matches.push(c);
+                        if (matches.length >= 25) break;
+                    }
+                }
+                return matches;
             }, [clientesSQL, busquedaNombre]);
 
             const seleccionarClienteSQL = (c) => {
@@ -303,11 +327,12 @@
                                     <label className="block text-sm font-medium text-slate-700">Nombre del Cliente (Base SQL)</label>
                                     <button
                                         type="button"
-                                        onClick={recargarClientesSQL}
+                                        onClick={() => recargarClientesSQL(true)}
                                         disabled={loadingSQL}
                                         className="text-xs font-semibold text-amber-600 hover:text-amber-700 flex items-center gap-1"
+                                        title="Descargar clientes nuevos directamente desde SQL"
                                     >
-                                        {loadingSQL ? "Cargando..." : `Catálogo SQL (${(clientesSQL || []).length}) ↻`}
+                                        {loadingSQL ? "Actualizando SQL..." : `Catálogo SQL (${(clientesSQL || []).length}) ↻`}
                                     </button>
                                 </div>
 
@@ -349,13 +374,13 @@
                                 {/* Ventana desplegable táctil para celular */}
                                 {mostrarListaSQL && (
                                     <div className="mt-2 bg-white border-2 border-amber-300 rounded-2xl shadow-xl max-h-64 overflow-y-auto divide-y divide-slate-100 z-30 relative custom-scrollbar">
-                                        {loadingSQL ? (
+                                        {loadingSQL && (!clientesSQL || clientesSQL.length === 0) ? (
                                             <div className="p-4 text-center text-sm text-slate-500 flex items-center justify-center gap-2">
-                                                <Icon name="Loader" size={18} /> Consultando tabla AM_CTE_ALTA...
+                                                <Icon name="Loader" size={18} /> Descargando clientes de SQL...
                                             </div>
                                         ) : clientesSQLFiltrados.length > 0 ? (
                                             clientesSQLFiltrados.map((c, idx) => {
-                                                const ub = concatenarUbicacionSQL(c);
+                                                const ub = c._ubicacion || concatenarUbicacionSQL(c);
                                                 return (
                                                     <button
                                                         type="button"
@@ -1077,7 +1102,18 @@
             const [users, setUsers] = useState([]);
             const [orders, setOrders] = useState([]);
             const [clientes, setClientes] = useState([]);
-            const [clientesSQL, setClientesSQL] = useState([]);
+            const [clientesSQL, setClientesSQL] = useState(() => {
+                try {
+                    const guardado = localStorage.getItem(CACHE_CLIENTES_SQL_KEY);
+                    if (guardado) {
+                        const parsed = JSON.parse(guardado);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            return prepararListaClientesSQL(parsed);
+                        }
+                    }
+                } catch (e) {}
+                return [];
+            });
             const [loadingSQL, setLoadingSQL] = useState(false);
             const [productos, setProductos] = useState([]);
             const [isLoadingApp, setIsLoadingApp] = useState(true);
@@ -1087,13 +1123,20 @@
             const [loginForm, setLoginForm] = useState({ usuario: '', password: '' });
             const [loginError, setLoginError] = useState("");
 
-            const cargarClientesSQL = async () => {
+            const cargarClientesSQL = async (forzarDesdeSQL = false) => {
                 setLoadingSQL(true);
                 try {
-                    const req = await fetch(`${SCRIPT_URL}?action=getClientesSQL`);
+                    const url = forzarDesdeSQL
+                        ? `${SCRIPT_URL}?action=getClientesSQL&refresh=1`
+                        : `${SCRIPT_URL}?action=getClientesSQL`;
+                    const req = await fetch(url);
                     const res = await req.json();
                     if (res.status === 'success' && Array.isArray(res.data)) {
-                        setClientesSQL(res.data);
+                        const listaPreparada = prepararListaClientesSQL(res.data);
+                        setClientesSQL(listaPreparada);
+                        try {
+                            localStorage.setItem(CACHE_CLIENTES_SQL_KEY, JSON.stringify(res.data));
+                        } catch (e) {}
                     }
                 } catch (e) {
                     console.warn("No se pudo cargar AM_CTE_ALTA desde SQL:", e);
