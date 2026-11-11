@@ -268,17 +268,17 @@
                     const prodSeleccionado = productos.find(p => formatProductId(p.id || p.nombre) === formatProductId(linea.productoId));
                     const idProducto = formatProductId(prodSeleccionado ? (prodSeleccionado.id || prodSeleccionado.nombre) : linea.productoId);
 
-                    // ID para grabar en columna R de "Ventas a entregar":
+                    // ID para grabar en columna S (id_cliente) de "Ventas a entregar":
                     // - Por teléfono: ID de pestaña "Clientes" (Ej. PP-00006)
                     // - Por nombre SQL: Cliente de AM_CTE_ALTA (Ej. CT-0000005)
-                    const idClienteColR = String(cliente.id || cliente.id_cliente || cliente.Cliente || "").trim();
+                    const idClienteColS = String(cliente.id || cliente.ID || cliente.id_cliente || cliente.Cliente || "").trim();
 
                     const nuevoPedido = {
                         id: lineas.length > 1 ? `PED-${baseId}-${i+1}` : `PED-${baseId}`,
                         vendedorId: user.id || user.nombre,
-                        idCliente: idClienteColR,
+                        idCliente: idClienteColS,
                         cliente: {
-                            id: idClienteColR,
+                            id: idClienteColS,
                             telefono: cliente.origenSQL ? (cliente.celEncargado || cliente.id || cliente.telefono || "") : (cliente.telefono || cliente.teléfono),
                             negocio: cliente.origenSQL ? (cliente.tipoNegocio || cliente.nombre) : cliente.negocio,
                             ubicacion: cliente.ubicacion || cliente.ubicación
@@ -1331,3 +1331,4 @@
     </script>
 </body>
 </html>
+
